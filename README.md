@@ -51,12 +51,11 @@ Refresh is a readout. It does not fold or start Embabel.
 | --- | --- | --- |
 | API | `./mvnw test` | No |
 | Install + both harvests | `./scripts/up.sh --setup-only` | No |
-| **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — hits Cursor** |
+| **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — this Cursor environment** |
 
-`./mvnw test` is the product. The dogfood **test that matters for orch/DIF** is the agent day: `CURSOR_API_KEY` + `@cursor/sdk` spawn a real Cursor agent on this tree. That agent executes `/sdlc-next` (it runs `sdlc.sh`), then an unstructured `persist-lesson` with no invented FEAT. GitHub CI does not have that key and does not claim this proof.
+`./mvnw test` is the API. Dogfood exists so we can prove orch/DIF **inside Cursor**. When `CURSOR_AGENT=1` (this Cloud Agent / the IDE), `run.sh` **is** the agent: it follows `/sdlc-next` (`sdlc.sh next` + silent fold) and harvests `pitfall:(none):notify:dogfood-agent-day`. Outside Cursor, a [User API key](https://cursor.com/dashboard/integrations) + `@cursor/sdk` spawns the same day. GitHub CI does not claim this proof.
 
 ```bash
-export CURSOR_API_KEY=cursor_...   # https://cursor.com/dashboard/integrations
 ./scripts/up.sh --setup-only
 ./scripts/agent-day/run.sh
 ```

@@ -13,7 +13,7 @@ bad() { echo "  FAIL $1" >&2; fail=$((fail + 1)); }
 [[ -f "$ROOT/.claude/commands/sdlc-next.md" ]] && ok "Claude /sdlc-next" || bad "Claude pack"
 
 gate="$ROOT/.dif/projections/${WORK_ID}.gate.json"
-if [[ -f "$gate" ]] && grep -q '"readyForImplementation": true' "$gate"; then
+if [[ -f "$gate" ]] && grep -q '"readyForImplementation"' "$gate" && grep -q 'true' "$gate"; then
   ok "dif=ready $WORK_ID"
 else
   bad "missing ready gate $gate"
@@ -27,8 +27,8 @@ else
 fi
 
 staged="$ROOT/sdlc-spdd/.sdlc/staged/lessons.jsonl"
-if [[ -f "$staged" ]] && grep -q 'pitfall:(none):notify:' "$staged"; then
-  ok "unstructured (none) notify pitfall"
+if [[ -f "$staged" ]] && grep -q 'pitfall:(none):notify:dogfood-agent-day' "$staged"; then
+  ok "unstructured pitfall:(none):notify:dogfood-agent-day"
 else
   bad "no unscoped notify pitfall in staged lessons"
 fi

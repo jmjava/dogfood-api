@@ -2,13 +2,17 @@
 
 This is the dogfood test that proves **agent linkage**. It is not `./mvnw test`.
 
-`sdlc.sh` does not embed an LLM. The test **hits Cursor**: `@cursor/sdk` + `CURSOR_API_KEY` spawn a real agent on this repo. That agent reads `.cursor/commands/sdlc-next.md` and runs `sdlc.sh next`, then harvests an unstructured pitfall (`kind+area+body`, id slot `(none)`).
+Dogfood exists so we can run this **inside a Cursor environment**. When
+`CURSOR_AGENT=1` (Cloud Agent / IDE agent), this process **is** the agent:
+it follows `/sdlc-next` and runs `sdlc.sh`, then an unstructured persist.
+
+Outside Cursor, `CURSOR_API_KEY` + `@cursor/sdk` spawn an agent that does
+the same. A Cloud-injected token that is not a [User API key](https://cursor.com/dashboard/integrations)
+will 401 — use the in-environment path instead.
 
 ```bash
-export CURSOR_API_KEY=cursor_...
+# already in Cursor / this Cloud Agent:
 ./scripts/up.sh --setup-only
 ./scripts/agent-day/run.sh
 # same as: ./scripts/up.sh --prove
 ```
-
-Needs the full install (Cursor+Copilot+Claude pack already on the tree). Missing key is a fail, not a skip.
