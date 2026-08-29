@@ -4,7 +4,7 @@
 #
 #   ./scripts/up.sh                    # full install, claim, fold, both harvests, Dashboard :5051
 #   ./scripts/up.sh --setup-only       # same without starting the console
-#   ./scripts/up.sh --prove            # setup-only, then hit Cursor (/sdlc-next + unstructured persist)
+#   ./scripts/up.sh --prove            # setup-only, then /sdlc-next + unstructured persist (no extra key)
 #   ./scripts/up.sh --with-api         # also start GET /api/orders on :8080
 #   ./scripts/up.sh --with-guide-stack # also boot live orch-guide + Neo4j
 set -euo pipefail
