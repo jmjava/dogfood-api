@@ -59,6 +59,9 @@ it spawns a Cursor agent with the Cloud secret **`CORRECT_CURSOR_KEY`**
 the secret, then start a **new** agent — this VM only sees secrets from boot.
 
 ```bash
+# new Cloud Agent: from embabel-dif
+./scripts/bootstrap-cursor-agent-day.sh
+# or already on the feature branch:
 ./scripts/up.sh --setup-only
 ./scripts/agent-day/run.sh
 ```
