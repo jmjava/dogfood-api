@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Bootstrap the extended ecosystem against this consumer:
-#   dogfood-api (this repo) + orch Dashboard + DIF fold + optional Guide.
+# Full-ecosystem demo install. Not a partial adapter install.
+#   dogfood-api + orch (Cursor+Copilot+Claude+Guide marker) + DIF fold + both harvests + Dashboard.
 #
-#   ./scripts/up.sh                 # install, claim, fold, both-mode harvest, Dashboard :5051
-#   ./scripts/up.sh --setup-only    # same without starting the console
-#   ./scripts/up.sh --with-api      # also start GET /api/orders on :8080
-#   ./scripts/up.sh --with-guide    # clone/start orch-guide if Docker is available
+#   ./scripts/up.sh                    # full install, claim, fold, both harvests, Dashboard :5051
+#   ./scripts/up.sh --setup-only       # same without starting the console
+#   ./scripts/up.sh --with-api         # also start GET /api/orders on :8080
+#   ./scripts/up.sh --with-guide-stack # also boot live orch-guide + Neo4j
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,7 +14,7 @@ PORT="${DASHBOARD_PORT:-5051}"
 API_PORT="${API_PORT:-8080}"
 SETUP_ONLY=0
 WITH_API=0
-WITH_GUIDE=0
+WITH_GUIDE_STACK=0
 CLONE="${DOGFOOD_CLONE:-1}"
 
 usage() {
@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --setup-only) SETUP_ONLY=1; shift ;;
     --with-api) WITH_API=1; shift ;;
-    --with-guide) WITH_GUIDE=1; shift ;;
+    --with-guide|--with-guide-stack) WITH_GUIDE_STACK=1; shift ;;
     --no-clone) CLONE=0; shift ;;
     --help|-h) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -51,7 +51,7 @@ resolve_or_clone() {
     fi
   done
   if [[ "$CLONE" != "1" ]]; then
-    echo "FAIL: $env_var not set and $name is not a sibling (pass --no-clone?)" >&2
+    echo "FAIL: $env_var not set and $name is not a sibling" >&2
     return 1
   fi
   mkdir -p "$TOOLS"
@@ -63,13 +63,18 @@ resolve_or_clone() {
 }
 
 ORCH_HOME="$(resolve_or_clone sdlc-spdd-orchestrator ORCH_HOME sdlc-spdd-orchestrator)"
-DIF_HOME="$(resolve_or_clone embabel-dif DIF_HOME embabel-dif || true)"
+DIF_HOME="$(resolve_or_clone embabel-dif DIF_HOME embabel-dif)"
 export ORCH_HOME DIF_HOME
 
-echo "==> ecosystem"
+echo "==> ecosystem (full install)"
 echo "    dogfood : $ROOT"
 echo "    orch    : $ORCH_HOME"
-echo "    dif     : ${DIF_HOME:-<missing>}"
+echo "    dif     : $DIF_HOME"
+
+if [[ ! -x "$DIF_HOME/scripts/dif-fold.sh" ]]; then
+  echo "FAIL: DIF fold script missing at $DIF_HOME/scripts/dif-fold.sh" >&2
+  exit 1
+fi
 
 if [[ ! -x "$ORCH_HOME/.venv/bin/python" ]]; then
   echo "==> orch engine venv"
@@ -84,24 +89,41 @@ if [[ ! -x "$ORCH_PY" ]]; then
   exit 1
 fi
 
-echo "==> install orch adapters into dogfood-api"
-"$ORCH_HOME/scripts/init-project.sh" --target "$ROOT" --cursor
+echo "==> full orch install (Cursor + Copilot + Claude + Guide marker)"
+"$ORCH_HOME/scripts/init-project.sh" \
+  --target "$ROOT" \
+  --cursor --copilot --claude \
+  --with-guide
+
+echo "==> verify full install"
+"$ORCH_HOME/scripts/verify-project-install.sh" \
+  --target "$ROOT" \
+  --require-cursor --require-copilot --require-claude
+if [[ ! -f "$ROOT/sdlc-spdd/harness/guide-dice.md" ]]; then
+  echo "FAIL: Guide marker missing (expected sdlc-spdd/harness/guide-dice.md)" >&2
+  exit 1
+fi
 
 echo "==> claim FEAT-001-order-status-api (structured)"
 PYTHONPATH="$ORCH_HOME/engine/src${PYTHONPATH:+:$PYTHONPATH}" \
   SDLC_USER="${SDLC_USER:-dogfood}" \
   "$ORCH_PY" -m sdlc_engine --root "$ROOT" claim FEAT-001-order-status-api \
-    --phase architect --note "dogfood play" --force
+    --phase architect --note "dogfood full demo" --force
 
 GATE_DIR="$ROOT/.dif/projections"
-if [[ -n "${DIF_HOME:-}" && -x "$DIF_HOME/scripts/dif-fold.sh" ]]; then
-  echo "==> DIF fold (structured gate the Dashboard will read)"
-  mkdir -p "$GATE_DIR"
-  (cd "$DIF_HOME" && ./scripts/dif-fold.sh architect --quiet \
-    --canvas "$ROOT/sdlc-spdd/spdd/canvas/FEAT-001-order-status-api.md" \
-    --out "$GATE_DIR") || true
-else
-  echo "==> DIF missing — Dashboard will show no dif chip (skipped is silence)"
+echo "==> DIF fold (required)"
+mkdir -p "$GATE_DIR"
+fold_line="$(cd "$DIF_HOME" && ./scripts/dif-fold.sh architect --quiet \
+  --canvas "$ROOT/sdlc-spdd/spdd/canvas/FEAT-001-order-status-api.md" \
+  --out "$GATE_DIR")"
+echo "$fold_line"
+if [[ "$fold_line" != *dif=ready* ]]; then
+  echo "FAIL: expected dif=ready, got: $fold_line" >&2
+  exit 1
+fi
+if [[ ! -f "$GATE_DIR/FEAT-001-order-status-api.gate.json" ]]; then
+  echo "FAIL: missing $GATE_DIR/FEAT-001-order-status-api.gate.json" >&2
+  exit 1
 fi
 
 echo "==> structured harvest (Work ID + area)"
@@ -115,29 +137,31 @@ PYTHONPATH="$ORCH_HOME/engine/src${PYTHONPATH:+:$PYTHONPATH}" \
     --no-guide >/dev/null
 
 echo "==> unstructured harvest (kind + area + body, no FEAT)"
-if PYTHONPATH="$ORCH_HOME/engine/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "$ORCH_PY" -m sdlc_engine --root "$ROOT" context persist-lesson \
-    --kind pitfall \
-    --area notify \
-    --source adhoc-prompt \
-    --body "Retry without an idempotency key double-posts webhook deliveries." \
-    --no-guide >/dev/null
-then
-  echo "    staged pitfall:(none):notify:adhoc-prompt"
-else
-  echo "    orch persist-lesson still requires --work-id; pull cursor/capture-area-148e"
+unstructured_out="$(
+  PYTHONPATH="$ORCH_HOME/engine/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "$ORCH_PY" -m sdlc_engine --root "$ROOT" context persist-lesson \
+      --kind pitfall \
+      --area notify \
+      --source adhoc-prompt \
+      --body "Retry without an idempotency key double-posts webhook deliveries." \
+      --no-guide
+)"
+echo "$unstructured_out" | tail -n 5
+if ! echo "$unstructured_out" | grep -q 'pitfall:(none):notify:adhoc-prompt'; then
+  echo "FAIL: unstructured persist must write pitfall:(none):notify:adhoc-prompt (orch #213+)" >&2
+  exit 1
+fi
+if echo "$unstructured_out" | grep -q 'FEAT-ADHOC'; then
+  echo "FAIL: unstructured harvest invented a FEAT" >&2
+  exit 1
 fi
 
-if [[ "$WITH_GUIDE" == "1" ]]; then
-  GUIDE_HOME="$(resolve_or_clone orch-guide GUIDE_HOME orch-guide || true)"
+if [[ "$WITH_GUIDE_STACK" == "1" ]]; then
+  GUIDE_HOME="$(resolve_or_clone orch-guide GUIDE_HOME orch-guide)"
   export GUIDE_HOME
-  if [[ -n "${GUIDE_HOME:-}" && -f "$ORCH_HOME/tests/test-guide-stack-live.sh" ]]; then
-    echo "==> Guide + Neo4j (optional retrieve)"
-    GUIDE_KEEP=1 SDLC_GUIDE_STACK_LIVE=1 \
-      "$ORCH_HOME/tests/test-guide-stack-live.sh" || echo "Guide stack failed (optional)"
-  else
-    echo "==> Guide skipped (no orch-guide clone)"
-  fi
+  echo "==> Guide + Neo4j live stack"
+  GUIDE_KEEP=1 SDLC_GUIDE_STACK_LIVE=1 \
+    "$ORCH_HOME/tests/test-guide-stack-live.sh"
 fi
 
 if [[ "$WITH_API" == "1" ]]; then
@@ -147,6 +171,7 @@ if [[ "$WITH_API" == "1" ]]; then
 fi
 
 echo
+echo "Install    : Cursor + Copilot + Claude + Guide marker"
 echo "Structured : claim FEAT-001-order-status-api + fold + persist --work-id"
 echo "Unstructured: persist-lesson --area notify --source adhoc-prompt (no FEAT)"
 echo "Dashboard  : http://127.0.0.1:$PORT/?target=$ROOT"
