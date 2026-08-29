@@ -40,8 +40,25 @@ Refresh is a readout. It does not fold or start Embabel.
 
 ```bash
 ./scripts/up.sh --setup-only        # full install + claim + fold; no console
+./scripts/up.sh --prove             # then spawn a real Cursor agent (/sdlc-next)
 ./scripts/up.sh --with-api          # also boot GET /api/orders on :8080
 ./scripts/up.sh --with-guide-stack  # also boot live orch-guide + Neo4j
+```
+
+## What the tests prove
+
+| Lane | Command | LLM? |
+| --- | --- | --- |
+| API | `./mvnw test` | No |
+| Install + both harvests | `./scripts/up.sh --setup-only` | No |
+| **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — hits Cursor** |
+
+`./mvnw test` is the product. The dogfood **test that matters for orch/DIF** is the agent day: `CURSOR_API_KEY` + `@cursor/sdk` spawn a real Cursor agent on this tree. That agent executes `/sdlc-next` (it runs `sdlc.sh`), then an unstructured `persist-lesson` with no invented FEAT. GitHub CI does not have that key and does not claim this proof.
+
+```bash
+export CURSOR_API_KEY=cursor_...   # https://cursor.com/dashboard/integrations
+./scripts/up.sh --setup-only
+./scripts/agent-day/run.sh
 ```
 
 From `embabel-dif` the same path is `./scripts/ecosystem-up.sh`.

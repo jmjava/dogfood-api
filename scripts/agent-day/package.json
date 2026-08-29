@@ -1,0 +1,9 @@
+{
+  "name": "dogfood-cursor-agent-day",
+  "private": true,
+  "type": "module",
+  "description": "Spawn a real Cursor agent against this repo so /sdlc-next hits Cursor, then the agent runs sdlc.",
+  "dependencies": {
+    "@cursor/sdk": "^1.0.0"
+  }
+}
