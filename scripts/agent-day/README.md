@@ -1,7 +1,7 @@
 # Cursor agent day
 
 Full orch/DIF proof: **spawn a real Cursor agent**. Needs the Cloud Agent
-secret **`CORRECT_CURSOR_KEY`** (Integrations user key, `cursor_…`).
+secret **`CORRECT_CURSOR_KEY`** (Integrations user key, `crsr_…` or `cursor_…`).
 
 Do not use the injected `CURSOR_API_KEY` (`sk-proj…` → SDK 401).
 

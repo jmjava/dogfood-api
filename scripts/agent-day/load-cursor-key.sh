@@ -3,12 +3,13 @@
 # (that one is sk-proj-… and Agent.create returns 401).
 #
 # Preferred name: CORRECT_CURSOR_KEY (Cloud Agent secret).
-# Also accepts CURSOR_USER_API_KEY, or CURSOR_API_KEY only if it looks like cursor_…
+# Also accepts CURSOR_USER_API_KEY, or CURSOR_API_KEY only if it looks like
+# cursor_… or crsr_… (Integrations user keys). Refuse sk-proj… (401).
 set -euo pipefail
 
 _looks_like_user_key() {
   local v="$1"
-  [[ "$v" == cursor_* ]]
+  [[ "$v" == cursor_* || "$v" == crsr_* ]]
 }
 
 if [[ -n "${CORRECT_CURSOR_KEY:-}" ]]; then

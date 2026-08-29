@@ -79,8 +79,14 @@ if [[ ! -x "$DIF_HOME/scripts/dif-fold.sh" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$ORCH_HOME/.venv/bin/python" ]]; then
+# A failed `python -m venv` (no python3.12-venv / ensurepip) leaves
+# .venv/bin/python as a symlink and no pip. Treat that as missing.
+if [[ ! -x "$ORCH_HOME/.venv/bin/python" || ! -x "$ORCH_HOME/.venv/bin/pip" ]]; then
   echo "==> orch engine venv"
+  if [[ -d "$ORCH_HOME/.venv" && ! -x "$ORCH_HOME/.venv/bin/pip" ]]; then
+    echo "    removing broken .venv (python present, pip missing)"
+    rm -rf "$ORCH_HOME/.venv"
+  fi
   "$ORCH_HOME/scripts/setup-engine-venv.sh"
 fi
 ORCH_PY="$ORCH_HOME/.venv/bin/python"

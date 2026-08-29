@@ -130,7 +130,7 @@ async function main() {
     process.exit(1);
   }
   if (API_KEY.startsWith("sk-")) {
-    console.error("FAIL: refusing sk-… token. Use CORRECT_CURSOR_KEY (cursor_…).");
+    console.error("FAIL: refusing sk-… token. Use CORRECT_CURSOR_KEY (crsr_… / cursor_…).");
     process.exit(1);
   }
 
