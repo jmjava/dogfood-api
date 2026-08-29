@@ -51,7 +51,7 @@ Refresh is a readout. It does not fold or start Embabel.
 | --- | --- | --- |
 | API | `./mvnw test` | No |
 | Install + both harvests | `./scripts/up.sh --setup-only` | No |
-| **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — this Cursor environment** |
+| **Agent linkage** | `./scripts/agent-day/run.sh` then `status.sh` | **Yes — this Cursor environment** |
 
 `./mvnw test` is the API. The linkage test is `./scripts/agent-day/run.sh`:
 it spawns a Cursor agent with the Cloud secret **`CORRECT_CURSOR_KEY`**

@@ -42,10 +42,31 @@ if [[ -f "$RECEIPT" ]]; then
   else
     bad "receipt did not hit Cursor"
   fi
-  if grep -q 'sdlc-next' "$RECEIPT"; then
-    ok "receipt recorded /sdlc-next"
+  if grep -q '"mode": "sdk-spawn"' "$RECEIPT"; then
+    ok "receipt mode=sdk-spawn"
   else
-    bad "receipt missing /sdlc-next"
+    bad "receipt is not sdk-spawn (stand-in does not count)"
+  fi
+  eval "$(python3 - "$RECEIPT" <<'PY'
+import json, shlex, sys
+data = json.load(open(sys.argv[1], encoding="utf8"))
+cmds = {c.get("slug"): c for c in (data.get("commands") or []) if isinstance(c, dict)}
+nxt, raw = cmds.get("sdlc-next") or {}, cmds.get("persist-lesson-unstructured") or {}
+print(f"next_st={shlex.quote(str(nxt.get('status') or ''))}")
+print(f"raw_st={shlex.quote(str(raw.get('status') or ''))}")
+print(f"next_id={shlex.quote(str(nxt.get('runId') or ''))}")
+print(f"raw_id={shlex.quote(str(raw.get('runId') or ''))}")
+PY
+)"
+  if [[ "$next_st" == "finished" && -n "$next_id" ]]; then
+    ok "receipt /sdlc-next finished $next_id"
+  else
+    bad "receipt /sdlc-next not finished (status=$next_st)"
+  fi
+  if [[ "$raw_st" == "finished" && -n "$raw_id" ]]; then
+    ok "receipt unstructured persist finished $raw_id"
+  else
+    bad "receipt unstructured persist not finished (status=$raw_st)"
   fi
 else
   bad "missing $RECEIPT (agent day did not run)"
