@@ -2,6 +2,9 @@
 /**
  * Hit Cursor with CORRECT_CURSOR_KEY. The spawned agent runs /sdlc-next
  * then unstructured persist. Do not use the Cloud-injected sk-proj token.
+ *
+ * Spend locks: composer-2.5 only, 2 sends, per-run timeout, total token cap.
+ * Cancel the run if any lock trips. Never write secret values to disk.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -15,6 +18,18 @@ const WORK_ID = "FEAT-001-order-status-api";
 const MODEL = process.env.LIVE_CURSOR_MODEL || "composer-2.5";
 const API_KEY = process.env.CURSOR_API_KEY;
 const RECEIPT = path.join(ROOT, "sdlc-spdd", ".sdlc", "agent-day.json");
+const RUN_TIMEOUT_MS = Number(process.env.CURSOR_RUN_TIMEOUT_MS || 480_000);
+const MAX_TOTAL_TOKENS = Number(process.env.CURSOR_MAX_TOTAL_TOKENS || 150_000);
+const MAX_SENDS = Number(process.env.CURSOR_MAX_SENDS || 2);
+
+const BUDGET = [
+  "Spend locks (do not fight them):",
+  `- Model is ${MODEL} only. Do not switch models or enable Fast.`,
+  "- Do not spawn sub-agents, Cloud Agents, or extra SDK agents.",
+  "- Do not retry, loop, or open a second investigation.",
+  "- Do not print, echo, or write API keys / secrets / .env values.",
+  "- Stop as soon as the requested sdlc commands succeed.",
+].join("\n");
 
 function sdlcBin() {
   const local = path.join(ROOT, "sdlc-spdd", "scripts", "sdlc.sh");
@@ -30,6 +45,7 @@ function readCmd(slug) {
 
 function slashPrompt(slug, extra = "") {
   return [
+    BUDGET,
     `You are the agent a user would use on dogfood-api.`,
     `Execute the Cursor slash command /${slug} against this repository.`,
     `When the command says to run sdlc.sh, run: ${sdlcBin()} --target ${ROOT} <subcommand>`,
@@ -43,6 +59,7 @@ function slashPrompt(slug, extra = "") {
 }
 
 const UNSTRUCTURED_PROMPT = [
+  BUDGET,
   "This is the unstructured day. There is no new Work ID.",
   "A user opened a raw prompt about notify/WebhookNotifier.java (retry without an idempotency key).",
   `Run this exact harvest (do not invent FEAT-ADHOC):`,
@@ -58,18 +75,56 @@ const UNSTRUCTURED_PROMPT = [
   "Do not fold the chat. Do not create a canvas.",
 ].join("\n");
 
-async function send(agent, prompt) {
+function usageTotal(usage) {
+  if (!usage) return 0;
+  return Number(usage.totalTokens || 0);
+}
+
+async function send(agent, prompt, spentTokens) {
   const run = await agent.send(prompt);
-  const result = await run.wait();
-  return { runId: run.id, status: result.status };
+  let cancelled = "";
+  const started = Date.now();
+  const watch = setInterval(() => {
+    const used = spentTokens + usageTotal(run.usage);
+    if (!cancelled && Date.now() - started > RUN_TIMEOUT_MS) {
+      cancelled = `timeout ${RUN_TIMEOUT_MS}ms`;
+      run.cancel().catch(() => {});
+    } else if (!cancelled && used > MAX_TOTAL_TOKENS) {
+      cancelled = `token cap ${used}>${MAX_TOTAL_TOKENS}`;
+      run.cancel().catch(() => {});
+    }
+  }, 2000);
+  try {
+    const result = await run.wait();
+    const used = usageTotal(result.usage || run.usage);
+    return {
+      runId: run.id,
+      status: result.status,
+      tokens: used,
+      cancelled,
+    };
+  } finally {
+    clearInterval(watch);
+  }
 }
 
 function writeReceipt(payload) {
   fs.mkdirSync(path.dirname(RECEIPT), { recursive: true });
-  fs.writeFileSync(RECEIPT, JSON.stringify(payload, null, 2) + "\n", "utf8");
+  const text = JSON.stringify(payload, null, 2) + "\n";
+  for (const name of ["CORRECT_CURSOR_KEY", "CURSOR_API_KEY", "CURSOR_USER_API_KEY"]) {
+    const val = process.env[name];
+    if (val && val.length >= 12 && text.includes(val)) {
+      throw new Error(`refusing to write receipt: contains ${name}`);
+    }
+  }
+  fs.writeFileSync(RECEIPT, text, "utf8");
 }
 
 async function main() {
+  if (MODEL !== "composer-2.5") {
+    console.error(`FAIL: refusing model=${MODEL}. Locked to composer-2.5.`);
+    process.exit(1);
+  }
   if (!API_KEY) {
     console.error("FAIL: CURSOR_API_KEY empty after load-cursor-key.sh");
     process.exit(1);
@@ -82,39 +137,59 @@ async function main() {
   console.log("Cursor agent day (hits Cursor via SDK)");
   console.log(`  dogfood: ${ROOT}`);
   console.log(`  model:   ${MODEL}`);
+  console.log(`  locks:   ${MAX_SENDS} sends, ${RUN_TIMEOUT_MS}ms/send, ${MAX_TOTAL_TOKENS} tokens`);
 
   const agent = await Agent.create({
     apiKey: API_KEY,
     model: { id: MODEL },
     local: { cwd: ROOT, settingSources: ["project"] },
+    disallowedTools: ["task"],
   });
 
   const receipt = {
-    schema: 1,
+    schema: 2,
     hitCursor: true,
     mode: "sdk-spawn",
     extraKey: "CORRECT_CURSOR_KEY",
     agentId: agent.agentId || "",
     model: MODEL,
+    locks: {
+      maxSends: MAX_SENDS,
+      runTimeoutMs: RUN_TIMEOUT_MS,
+      maxTotalTokens: MAX_TOTAL_TOKENS,
+    },
     commands: [],
     workId: WORK_ID,
+    tokens: 0,
   };
 
+  let spent = 0;
   try {
     console.log(`  agentId: ${agent.agentId}`);
-    console.log("== /sdlc-next ==");
-    process.stdout.write("  running Cursor agent... ");
-    const next = await send(agent, slashPrompt("sdlc-next"));
-    console.log(`runId=${next.runId} status=${next.status}`);
-    receipt.commands.push({ slug: "sdlc-next", runId: next.runId, status: next.status });
-    if (next.status !== "finished") throw new Error(`/sdlc-next status=${next.status}`);
+    const jobs = [
+      { slug: "sdlc-next", prompt: slashPrompt("sdlc-next") },
+      { slug: "persist-lesson-unstructured", prompt: UNSTRUCTURED_PROMPT },
+    ];
+    if (jobs.length > MAX_SENDS) throw new Error(`jobs ${jobs.length} > CURSOR_MAX_SENDS=${MAX_SENDS}`);
 
-    console.log("== unstructured persist ==");
-    process.stdout.write("  running Cursor agent... ");
-    const raw = await send(agent, UNSTRUCTURED_PROMPT);
-    console.log(`runId=${raw.runId} status=${raw.status}`);
-    receipt.commands.push({ slug: "persist-lesson-unstructured", runId: raw.runId, status: raw.status });
-    if (raw.status !== "finished") throw new Error(`unstructured status=${raw.status}`);
+    for (const job of jobs) {
+      if (spent > MAX_TOTAL_TOKENS) throw new Error(`token cap before ${job.slug}: ${spent}>${MAX_TOTAL_TOKENS}`);
+      console.log(`== ${job.slug} ==`);
+      process.stdout.write("  running Cursor agent... ");
+      const out = await send(agent, job.prompt, spent);
+      spent += out.tokens;
+      console.log(`runId=${out.runId} status=${out.status} tokens=${out.tokens} spent=${spent}`);
+      receipt.commands.push({
+        slug: job.slug,
+        runId: out.runId,
+        status: out.status,
+        tokens: out.tokens,
+        cancelled: out.cancelled || undefined,
+      });
+      receipt.tokens = spent;
+      if (out.cancelled) throw new Error(`${job.slug} cancelled: ${out.cancelled}`);
+      if (out.status !== "finished") throw new Error(`${job.slug} status=${out.status}`);
+    }
   } catch (err) {
     if (err instanceof CursorAgentError) {
       console.error(`FAIL Cursor: ${err.message} retryable=${err.isRetryable}`);
