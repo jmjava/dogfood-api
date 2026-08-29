@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fail closed if a live secret VALUE is present in git-tracked files.
-# Complements GitGuardian CI. Does not print secret values.
+# Fail if a live secret value is in git. Does not print secret values.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

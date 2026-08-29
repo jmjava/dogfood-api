@@ -58,8 +58,7 @@ it spawns a Cursor agent with the Cloud secret **`CORRECT_CURSOR_KEY`**
 (Integrations user key, `crsr_…` / `cursor_…`), locked to **`composer-2.5`**
 plus time/token caps. Do not use the injected `CURSOR_API_KEY` (`sk-proj…` →
 401). Add the secret, then start a **new** agent — this VM only sees secrets
-from boot. GitGuardian CI (`.github/workflows/gitguardian.yml`) fails closed
-unless `GITGUARDIAN_API_KEY` is a repo Actions secret.
+from boot.
 
 ```bash
 # new Cloud Agent: from embabel-dif
