@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * Hit Cursor. A real agent (same SDK/models as the IDE) opens this repo,
- * executes /sdlc-next, then an unstructured persist without inventing a FEAT.
- *
- * Requires CURSOR_API_KEY. This is the dogfood product proof.
+ * Hit Cursor with CORRECT_CURSOR_KEY. The spawned agent runs /sdlc-next
+ * then unstructured persist. Do not use the Cloud-injected sk-proj token.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -55,15 +53,15 @@ const UNSTRUCTURED_PROMPT = [
   "  --no-guide",
   "",
   "The persisted id must be pitfall:(none):notify:dogfood-agent-day.",
-  "Then run retrieve: ",
+  "Then run retrieve:",
   `${sdlcBin()} --target ${ROOT} context retrieve --area notify`,
-  "Summarize the retrieve. Do not fold the chat. Do not create a canvas.",
+  "Do not fold the chat. Do not create a canvas.",
 ].join("\n");
 
 async function send(agent, prompt) {
   const run = await agent.send(prompt);
   const result = await run.wait();
-  return { runId: run.id, status: result.status, result };
+  return { runId: run.id, status: result.status };
 }
 
 function writeReceipt(payload) {
@@ -73,19 +71,17 @@ function writeReceipt(payload) {
 
 async function main() {
   if (!API_KEY) {
-    console.error("FAIL: CURSOR_API_KEY is required. This test hits Cursor.");
+    console.error("FAIL: CURSOR_API_KEY empty after load-cursor-key.sh");
     process.exit(1);
   }
-  const nextPath = path.join(ROOT, ".cursor", "commands", "sdlc-next.md");
-  if (!fs.existsSync(nextPath)) {
-    console.error(`FAIL: missing ${nextPath} — run ./scripts/up.sh --setup-only`);
+  if (API_KEY.startsWith("sk-")) {
+    console.error("FAIL: refusing sk-… token. Use CORRECT_CURSOR_KEY (cursor_…).");
     process.exit(1);
   }
 
-  console.log("Cursor agent day (hits Cursor)");
+  console.log("Cursor agent day (hits Cursor via SDK)");
   console.log(`  dogfood: ${ROOT}`);
   console.log(`  model:   ${MODEL}`);
-  console.log();
 
   const agent = await Agent.create({
     apiKey: API_KEY,
@@ -96,6 +92,8 @@ async function main() {
   const receipt = {
     schema: 1,
     hitCursor: true,
+    mode: "sdk-spawn",
+    extraKey: "CORRECT_CURSOR_KEY",
     agentId: agent.agentId || "",
     model: MODEL,
     commands: [],
@@ -109,38 +107,26 @@ async function main() {
     const next = await send(agent, slashPrompt("sdlc-next"));
     console.log(`runId=${next.runId} status=${next.status}`);
     receipt.commands.push({ slug: "sdlc-next", runId: next.runId, status: next.status });
-    if (next.status !== "finished") {
-      throw new Error(`/sdlc-next status=${next.status}`);
-    }
+    if (next.status !== "finished") throw new Error(`/sdlc-next status=${next.status}`);
 
-    console.log("== unstructured persist (kind+area+body, no FEAT) ==");
+    console.log("== unstructured persist ==");
     process.stdout.write("  running Cursor agent... ");
     const raw = await send(agent, UNSTRUCTURED_PROMPT);
     console.log(`runId=${raw.runId} status=${raw.status}`);
-    receipt.commands.push({
-      slug: "persist-lesson-unstructured",
-      runId: raw.runId,
-      status: raw.status,
-    });
-    if (raw.status !== "finished") {
-      throw new Error(`unstructured persist status=${raw.status}`);
-    }
+    receipt.commands.push({ slug: "persist-lesson-unstructured", runId: raw.runId, status: raw.status });
+    if (raw.status !== "finished") throw new Error(`unstructured status=${raw.status}`);
   } catch (err) {
     if (err instanceof CursorAgentError) {
       console.error(`FAIL Cursor: ${err.message} retryable=${err.isRetryable}`);
     } else {
       console.error(`FAIL: ${err}`);
     }
-    receipt.hitCursor = Boolean(receipt.agentId);
     receipt.error = String(err);
     writeReceipt(receipt);
     process.exit(1);
   } finally {
-    if (typeof agent[Symbol.asyncDispose] === "function") {
-      await agent[Symbol.asyncDispose]();
-    } else if (typeof agent.close === "function") {
-      await agent.close();
-    }
+    if (typeof agent[Symbol.asyncDispose] === "function") await agent[Symbol.asyncDispose]();
+    else if (typeof agent.close === "function") await agent.close();
   }
 
   writeReceipt(receipt);

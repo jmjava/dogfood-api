@@ -59,7 +59,8 @@ cat > "$RECEIPT" <<EOF
   "schema": 1,
   "hitCursor": true,
   "mode": "in-environment",
-  "agent": "CURSOR_AGENT",
+  "agent": "${CURSOR_AGENT:-script}",
+  "extraKey": false,
   "commands": ["sdlc-next", "persist-lesson-unstructured"],
   "workId": "$WORK_ID",
   "dif": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$dif_line")

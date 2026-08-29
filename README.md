@@ -40,7 +40,7 @@ Refresh is a readout. It does not fold or start Embabel.
 
 ```bash
 ./scripts/up.sh --setup-only        # full install + claim + fold; no console
-./scripts/up.sh --prove             # then spawn a real Cursor agent (/sdlc-next)
+./scripts/up.sh --prove             # then /sdlc-next + unstructured persist (no extra key)
 ./scripts/up.sh --with-api          # also boot GET /api/orders on :8080
 ./scripts/up.sh --with-guide-stack  # also boot live orch-guide + Neo4j
 ```
@@ -53,7 +53,10 @@ Refresh is a readout. It does not fold or start Embabel.
 | Install + both harvests | `./scripts/up.sh --setup-only` | No |
 | **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — this Cursor environment** |
 
-`./mvnw test` is the API. Dogfood exists so we can prove orch/DIF **inside Cursor**. When `CURSOR_AGENT=1` (this Cloud Agent / the IDE), `run.sh` **is** the agent: it follows `/sdlc-next` (`sdlc.sh next` + silent fold) and harvests `pitfall:(none):notify:dogfood-agent-day`. Outside Cursor, a [User API key](https://cursor.com/dashboard/integrations) + `@cursor/sdk` spawns the same day. GitHub CI does not claim this proof.
+`./mvnw test` is the API. The linkage test is `./scripts/agent-day/run.sh`:
+it spawns a Cursor agent with the Cloud secret **`CORRECT_CURSOR_KEY`**
+(Integrations user key). Do not use the injected `CURSOR_API_KEY`. Add
+the secret, then start a **new** agent — this VM only sees secrets from boot.
 
 ```bash
 ./scripts/up.sh --setup-only
