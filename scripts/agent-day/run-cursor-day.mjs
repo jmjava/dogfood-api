@@ -212,7 +212,22 @@ async function main() {
   });
   if (verify.stdout) process.stdout.write(verify.stdout);
   if (verify.stderr) process.stderr.write(verify.stderr);
-  if (verify.status !== 0) process.exit(verify.status || 1);
+  receipt.ok = verify.status === 0;
+  receipt.verifiedAt = new Date().toISOString();
+  if (verify.status !== 0) {
+    receipt.error = receipt.error || `verify.sh exit ${verify.status}`;
+    writeReceipt(receipt);
+    process.exit(verify.status || 1);
+  }
+  writeReceipt(receipt);
+  const status = spawnSync(path.join(ROOT, "scripts", "agent-day", "status.sh"), [], {
+    encoding: "utf8",
+    cwd: ROOT,
+    env: { ...process.env, DOGFOOD_AGENT_RECEIPT: RECEIPT },
+  });
+  if (status.stdout) process.stdout.write(status.stdout);
+  if (status.stderr) process.stderr.write(status.stderr);
+  if (status.status !== 0) process.exit(status.status || 1);
   console.log("dogfood Cursor agent day: OK");
 }
 

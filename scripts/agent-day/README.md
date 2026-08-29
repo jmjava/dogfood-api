@@ -9,7 +9,16 @@ Do not use the injected `CURSOR_API_KEY` (`sk-proj…` → SDK 401).
 ./scripts/up.sh --setup-only
 ./scripts/agent-day/run.sh
 # same as: ./scripts/up.sh --prove
+./scripts/agent-day/status.sh   # RESULT=WORKED or RESULT=FAILED (no respawn)
 ```
+
+`status.sh` is the day verdict, not a spawn ping. It fails unless the
+structured gate is ready, the pointer is `FEAT-001-order-status-api`,
+the unstructured lesson `pitfall:(none):notify:dogfood-agent-day`
+landed, and no `FEAT-ADHOC` was invented. It prints `RESULT=` and
+`WHY=` (every failed check), writes `agent-day-result.txt` plus a
+Surefire XML, and `run.sh` feeds that into `./mvnw -Dtest=CursorSpawnResultTest`.
+A failed day fails the test run.
 
 `run.sh` is locked to **`composer-2.5`** (cheapest standard model, not Fast)
 with a 2-send / 8-minute / 150k-token / 12-minute wall budget. It cancels
