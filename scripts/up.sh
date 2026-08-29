@@ -4,6 +4,7 @@
 #
 #   ./scripts/up.sh                    # full install, claim, fold, both harvests, Dashboard :5051
 #   ./scripts/up.sh --setup-only       # same without starting the console
+#   ./scripts/up.sh --prove            # setup-only, then /sdlc-next + unstructured persist (no extra key)
 #   ./scripts/up.sh --with-api         # also start GET /api/orders on :8080
 #   ./scripts/up.sh --with-guide-stack # also boot live orch-guide + Neo4j
 set -euo pipefail
@@ -13,6 +14,7 @@ TOOLS="${DOGFOOD_TOOLS:-$ROOT/.tools}"
 PORT="${DASHBOARD_PORT:-5051}"
 API_PORT="${API_PORT:-8080}"
 SETUP_ONLY=0
+PROVE=0
 WITH_API=0
 WITH_GUIDE_STACK=0
 CLONE="${DOGFOOD_CLONE:-1}"
@@ -24,6 +26,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --setup-only) SETUP_ONLY=1; shift ;;
+    --prove) PROVE=1; SETUP_ONLY=1; shift ;;
     --with-api) WITH_API=1; shift ;;
     --with-guide|--with-guide-stack) WITH_GUIDE_STACK=1; shift ;;
     --no-clone) CLONE=0; shift ;;
@@ -76,8 +79,14 @@ if [[ ! -x "$DIF_HOME/scripts/dif-fold.sh" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$ORCH_HOME/.venv/bin/python" ]]; then
+# A failed `python -m venv` (no python3.12-venv / ensurepip) leaves
+# .venv/bin/python as a symlink and no pip. Treat that as missing.
+if [[ ! -x "$ORCH_HOME/.venv/bin/python" || ! -x "$ORCH_HOME/.venv/bin/pip" ]]; then
   echo "==> orch engine venv"
+  if [[ -d "$ORCH_HOME/.venv" && ! -x "$ORCH_HOME/.venv/bin/pip" ]]; then
+    echo "    removing broken .venv (python present, pip missing)"
+    rm -rf "$ORCH_HOME/.venv"
+  fi
   "$ORCH_HOME/scripts/setup-engine-venv.sh"
 fi
 ORCH_PY="$ORCH_HOME/.venv/bin/python"
@@ -177,6 +186,11 @@ echo "Unstructured: persist-lesson --area notify --source adhoc-prompt (no FEAT)
 echo "Dashboard  : http://127.0.0.1:$PORT/?target=$ROOT"
 echo "API        : ./mvnw spring-boot:run   then GET /api/orders?email=ops@example.com"
 echo
+
+if [[ "$PROVE" == "1" ]]; then
+  echo "==> Cursor agent day (hits Cursor)"
+  exec "$ROOT/scripts/agent-day/run.sh"
+fi
 
 if [[ "$SETUP_ONLY" == "1" ]]; then
   echo "setup-only: console not started"

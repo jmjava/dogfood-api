@@ -40,8 +40,32 @@ Refresh is a readout. It does not fold or start Embabel.
 
 ```bash
 ./scripts/up.sh --setup-only        # full install + claim + fold; no console
+./scripts/up.sh --prove             # then /sdlc-next + unstructured persist (no extra key)
 ./scripts/up.sh --with-api          # also boot GET /api/orders on :8080
 ./scripts/up.sh --with-guide-stack  # also boot live orch-guide + Neo4j
+```
+
+## What the tests prove
+
+| Lane | Command | LLM? |
+| --- | --- | --- |
+| API | `./mvnw test` | No |
+| Install + both harvests | `./scripts/up.sh --setup-only` | No |
+| **Agent linkage** | `./scripts/agent-day/run.sh` | **Yes — this Cursor environment** |
+
+`./mvnw test` is the API. The linkage test is `./scripts/agent-day/run.sh`:
+it spawns a Cursor agent with the Cloud secret **`CORRECT_CURSOR_KEY`**
+(Integrations user key, `crsr_…` / `cursor_…`), locked to **`composer-2.5`**
+plus time/token caps. Do not use the injected `CURSOR_API_KEY` (`sk-proj…` →
+401). Add the secret, then start a **new** agent — this VM only sees secrets
+from boot.
+
+```bash
+# new Cloud Agent: from embabel-dif
+./scripts/bootstrap-cursor-agent-day.sh
+# or already on the feature branch:
+./scripts/up.sh --setup-only
+./scripts/agent-day/run.sh
 ```
 
 From `embabel-dif` the same path is `./scripts/ecosystem-up.sh`.

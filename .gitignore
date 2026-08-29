@@ -1,3 +1,4 @@
+scripts/agent-day/node_modules/
 target/
 .idea/
 *.iml
@@ -7,3 +8,5 @@ target/
 .venv/
 *.log
 .DS_Store
+# SDLC-SPDD gitignored runtime (sessions, staged lessons, sqlite cache)
+sdlc-spdd/.sdlc/
