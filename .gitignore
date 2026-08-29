@@ -1,0 +1,9 @@
+target/
+.idea/
+*.iml
+.sdlc/
+.dif/
+.tools/
+.venv/
+*.log
+.DS_Store
